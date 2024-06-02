@@ -4,6 +4,8 @@ import subprocess
 import sys
 from contextlib import contextmanager
 from typing import Any, Dict, List
+import torch
+import time
 
 
 def do_bench_cudagraph(fn, rep=20, grad_to_none=None, return_mode="mean"):
@@ -68,6 +70,13 @@ def do_bench_cudagraph(fn, rep=20, grad_to_none=None, return_mode="mean"):
     times = torch.tensor(ret)
     return getattr(torch, return_mode)(times).item()
 
+def get_time_us_sync():
+    # Synchronize the CUDA device to ensure accurate timing
+    torch.cuda.synchronize()
+    # Get the current time in microseconds since epoch
+    now = time.time()
+    duration = now * 1e6  # Convert seconds to microseconds
+    return duration
 
 def do_bench(fn, warmup=25, rep=100, grad_to_none=None, quantiles=None, fast_flush=True, return_mode="mean"):
     """
@@ -88,7 +97,6 @@ def do_bench(fn, warmup=25, rep=100, grad_to_none=None, quantiles=None, fast_flu
     :type fast_flush: bool
     """
     assert return_mode in ["min", "max", "mean", "median"]
-    import torch
 
     fn()
     torch.cuda.synchronize()
@@ -102,24 +110,22 @@ def do_bench(fn, warmup=25, rep=100, grad_to_none=None, quantiles=None, fast_flu
         cache = torch.empty(int(256e6), dtype=torch.int8, device='cuda')
 
     # Estimate the runtime of the function
-    start_event = torch.cuda.Event(enable_timing=True)
-    end_event = torch.cuda.Event(enable_timing=True)
-    start_event.record()
+    start_time = get_time_us_sync()
     for _ in range(5):
         cache.zero_()
         fn()
-    end_event.record()
-    torch.cuda.synchronize()
-    estimate_ms = start_event.elapsed_time(end_event) / 5
+    end_time = get_time_us_sync()
+    estimate_us = (end_time - start_time) / 5
 
     # compute number of warmup and repeat
-    n_warmup = max(1, int(warmup / estimate_ms))
-    n_repeat = max(1, int(rep / estimate_ms))
-    start_event = [torch.cuda.Event(enable_timing=True) for i in range(n_repeat)]
-    end_event = [torch.cuda.Event(enable_timing=True) for i in range(n_repeat)]
+    n_warmup = max(1, int(warmup * 1000 / estimate_us))
+    n_repeat = max(1, int(rep * 1000 / estimate_us))
+    times = []
+
     # Warm-up
     for _ in range(n_warmup):
         fn()
+
     # Benchmark
     for i in range(n_repeat):
         # we don't want `fn` to accumulate gradient values
@@ -131,19 +137,19 @@ def do_bench(fn, warmup=25, rep=100, grad_to_none=None, quantiles=None, fast_flu
         # we clear the L2 cache before each run
         cache.zero_()
         # record time of `fn`
-        start_event[i].record()
+        start_time = get_time_us_sync()
         fn()
-        end_event[i].record()
-    # Record clocks
-    torch.cuda.synchronize()
-    times = torch.tensor([s.elapsed_time(e) for s, e in zip(start_event, end_event)], dtype=torch.float)
+        end_time = get_time_us_sync()
+        times.append(end_time - start_time)
+
+    # Convert times to milliseconds
+    times = torch.tensor(times, dtype=torch.float) / 1000
     if quantiles is not None:
         ret = torch.quantile(times, torch.tensor(quantiles, dtype=torch.float)).tolist()
         if len(ret) == 1:
             ret = ret[0]
         return ret
     return getattr(torch, return_mode)(times).item()
-
 
 def assert_close(x, y, atol=None, rtol=None, err_msg=''):
     import numpy as np
