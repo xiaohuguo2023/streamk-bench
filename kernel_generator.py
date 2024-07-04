@@ -172,10 +172,69 @@ class KernelGenerator:
         write_gemm_function_calls(f_kernel, jobs, configs, M, N, K, iters, run_bench, icache_flush, bias_size)
         write_main_function(f_kernel, jobs, M, N, K, rotating_buffer_size)
 
+    def gen_kernel_and_configStr_from_config(self, M, N, K, config, dtype_a, dtype_b, dtype_c, bias_size=None):
+        block_m, block_n, block_k, group_m, split_k, num_warps, num_stages, waves_per_eu, mfmaInstrSize, kpack = read_config(config)
+        torch_dtype_a = 'fp16'
+        torch_dtype_b = 'fp16'
+        torch_dtype_c = 'fp16'
+        if dtype_a:
+            torch_dtype_a = tl_to_torch_types[name_to_tl_types[dtype_a]]
+        if dtype_b:
+            torch_dtype_b = tl_to_torch_types[name_to_tl_types[dtype_b]]
+        if dtype_c:
+            torch_dtype_c = tl_to_torch_types[name_to_tl_types[dtype_c]]
+        configStr = f"M{M}_N{N}_K{K}_BM{block_m}_BN{block_n}_BK{block_k}_GM{group_m}_SK{split_k}_nW{num_warps}_nS{num_stages}_EU{waves_per_eu}_kP{kpack}_mfma{mfmaInstrSize}"
+        if bias_size > 0:
+            configStr += "_bias"
+        use_bias = bias_size > 0
+        matmul_def_str = f"""
+    def matmul_{configStr}(a, b, c, bias, M, N, K, am, ak, bk, bn, cm, cn, biasn, warmup=False):
+        grid = triton.cdiv(M, {block_m}) * triton.cdiv(N, {block_n}), {split_k}
+        #print(f'config: matmul_kernel_{configStr}', flush=True)
+        if warmup:
+            matmul_kernel_{configStr}.warmup(
+                {torch_dtype_a}, {torch_dtype_b}, {torch_dtype_c}, {torch_dtype_c},
+                M, N, K,
+                am, ak, bk, bn, cm, cn, biasn,
+                BLOCK_SIZE_M = {block_m},
+                BLOCK_SIZE_N = {block_n},
+                BLOCK_SIZE_K = {block_k},
+                GROUP_SIZE_M = {group_m},
+                SPLIT_K = {split_k},
+                num_warps = {num_warps},
+                num_stages = {num_stages},
+                waves_per_eu = {waves_per_eu},
+                matrix_instr_nonkdim = {mfmaInstrSize},
+                kpack = {kpack},
+                BIAS={use_bias},
+                grid=(1,),
+            )
+            return None
+        else:
+            matmul_kernel_{configStr}[grid](
+                a, b, c, bias,
+                M, N, K,
+                am, ak, bk, bn, cm, cn, biasn,
+                BLOCK_SIZE_M = {block_m},
+                BLOCK_SIZE_N = {block_n},
+                BLOCK_SIZE_K = {block_k},
+                GROUP_SIZE_M = {group_m},
+                SPLIT_K = {split_k},
+                num_warps = {num_warps},
+                num_stages = {num_stages},
+                waves_per_eu = {waves_per_eu},
+                matrix_instr_nonkdim = {mfmaInstrSize},
+                kpack = {kpack},
+                BIAS = {use_bias},
+            )
+            return c
 
-    def generate_kernel_and_config_str(self, config, bias_size=None):
-        # Implement your logic to generate kernel and config string based on the config and bias_size
-        kernel_code = "generated_kernel_code"  # Replace with actual kernel generation logic
-        config_str = "config_string"  # Replace with actual config string generation logic
-        return kernel_code, config_str
-
+    def try_config_{configStr}(M, N, K, am, ak, bk, bn, cm, cn, biasn):
+        try:
+            matmul_{configStr}(None, None, None, None, M, N, K, am, ak, bk, bn, cm, cn, biasn, True)
+            return True
+        except Exception as e:
+            print(f'invalid config(compilation): {configStr}: ', e, flush=True)
+            return False
+    """
+        return configStr, matmul_def_str
