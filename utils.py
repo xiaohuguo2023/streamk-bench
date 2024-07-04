@@ -12,6 +12,10 @@ class Utils:
         defaultName = f"tuning_results_{git_branch_name}@{git_commit_hash}_{dt_string}.yaml"
         return defaultName
 
+    @staticmethod
+		def generated_kernel_name(M, N, K, gpu_id):
+				path = os.path.dirname(os.path.abspath(__file__))
+				return f"{path}/generated_kernel{M}-{N}-{K}-{gpu_id}.py"
 
     @staticmethod
     def parse_args():
