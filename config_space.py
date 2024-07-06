@@ -31,7 +31,9 @@ class ConfigSpaces:
         return configs
 
     @staticmethod
-    def get_default_config():                                                                                                       full_configs = get_full_tuning_space()                                                                                      return full_configs[0]
+    def get_default_config():
+        full_configs = get_full_tuning_space()
+        return full_configs[0]
 
     @staticmethod
     def prune_configs(M, N, K, configs, elemBytes_a, elemBytes_b):
