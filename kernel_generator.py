@@ -1,4 +1,7 @@
 import os
+import os
+from config_space import ConfigSpaces
+from type_mappings import TypeMappings
 
 class KernelGenerator:
 
@@ -30,14 +33,14 @@ class KernelGenerator:
     import multiprocessing
     from tune_gemm import gen_rotating_tensors
     """
-        if icache_flush:
+        if self.icache_flush:
             import_str += """
     from icache_flush import icache_flush
     """
-        for fi in range(jobs):
+        for fi in range(self.jobs):
             f_kernel[fi].write(import_str + "\n")
 
-    def write_kernel_definitions(f_kernel, jobs, configs, M, N, K, dtype_a, dtype_b, dtype_c, bias_size):
+    def write_kernel_definitions(self, f_kernel, jobs, configs, M, N, K, dtype_a, dtype_b, dtype_c, bias_size):
         # write definitions of matmul_kernel_xxx
         # and matmul_xxx and try_config
         with open(os.path.dirname(os.path.abspath(__file__))+"/matmul_kernel.py") as file:
@@ -45,7 +48,7 @@ class KernelGenerator:
         idx = 0
         for config in configs:
             file_idx = idx % jobs
-            configStr, matmul_def_str = gen_kernel_and_configStr_from_config(M, N, K, config, dtype_a, dtype_b, dtype_c, bias_size)
+            configStr, matmul_def_str = self.gen_kernel_and_configStr_from_config(M, N, K, config, dtype_a, dtype_b, dtype_c, bias_size)
             # Copy the matmul_kernel with name replaced
             matmul_kernel_config = matmul_kernel_code.replace("matmul_kernel", f"matmul_kernel_{configStr}")
             matmul_kernel_config = matmul_kernel_config.replace("import triton.language as tl", "")
@@ -54,7 +57,7 @@ class KernelGenerator:
             f_kernel[file_idx].write(matmul_def_str + "\n")
             idx += 1
 
-    def write_test_gemm_preamble(f_kernel, jobs, M, N, K, dtype_a, col_a, dtype_b, col_b, dtype_c, init_type, rotating_buffer_size, bias_size):
+    def write_test_gemm_preamble(self, f_kernel, jobs, M, N, K, dtype_a, col_a, dtype_b, col_b, dtype_c, init_type, rotating_buffer_size, bias_size):
         # write test_gemm
         # pre string
         test_gemm_pre_str = f"""def test_gemm(M, N, K, rotating_buffer_size, bias_size, num_threads):
@@ -173,16 +176,16 @@ class KernelGenerator:
         write_main_function(f_kernel, jobs, M, N, K, rotating_buffer_size)
 
     def gen_kernel_and_configStr_from_config(self, M, N, K, config, dtype_a, dtype_b, dtype_c, bias_size=None):
-        block_m, block_n, block_k, group_m, split_k, num_warps, num_stages, waves_per_eu, mfmaInstrSize, kpack = read_config(config)
+        block_m, block_n, block_k, group_m, split_k, num_warps, num_stages, waves_per_eu, mfmaInstrSize, kpack = ConfigSpaces.read_config(config)
         torch_dtype_a = 'fp16'
         torch_dtype_b = 'fp16'
         torch_dtype_c = 'fp16'
         if dtype_a:
-            torch_dtype_a = tl_to_torch_types[name_to_tl_types[dtype_a]]
+            torch_dtype_a = TypeMappings.tl_to_torch_types[name_to_tl_types[dtype_a]]
         if dtype_b:
-            torch_dtype_b = tl_to_torch_types[name_to_tl_types[dtype_b]]
+            torch_dtype_b = TypeMappings.tl_to_torch_types[name_to_tl_types[dtype_b]]
         if dtype_c:
-            torch_dtype_c = tl_to_torch_types[name_to_tl_types[dtype_c]]
+            torch_dtype_c = TypeMappings.tl_to_torch_types[name_to_tl_types[dtype_c]]
         configStr = f"M{M}_N{N}_K{K}_BM{block_m}_BN{block_n}_BK{block_k}_GM{group_m}_SK{split_k}_nW{num_warps}_nS{num_stages}_EU{waves_per_eu}_kP{kpack}_mfma{mfmaInstrSize}"
         if bias_size > 0:
             configStr += "_bias"
