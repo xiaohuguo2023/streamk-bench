@@ -1,5 +1,6 @@
 import unittest
 import os
+import torch
 from kernel_generator import KernelGenerator
 
 class TestKernelGenerator(unittest.TestCase):
@@ -9,7 +10,7 @@ class TestKernelGenerator(unittest.TestCase):
         self.kernel_gen = KernelGenerator(
             M=64, N=64, K=64,
             col_a=0, col_b=0,
-            dtype_a='float32', dtype_b='float32', dtype_c='float32',
+            dtype_a='fp32', dtype_b='fp32', dtype_c='fp32',
             init_type='random', configs=[{'block_m': 16, 'block_n': 16, 'block_k': 16, 'split_k': 1}],
             jobs=1, iters=1, run_bench=False,
             rotating_buffer_size=16, bias_size=0, icache_flush=False
@@ -26,9 +27,9 @@ class TestKernelGenerator(unittest.TestCase):
         self.assertEqual(self.kernel_gen.M, 64)
         self.assertEqual(self.kernel_gen.N, 64)
         self.assertEqual(self.kernel_gen.K, 64)
-        self.assertEqual(self.kernel_gen.dtype_a, 'float32')
-        self.assertEqual(self.kernel_gen.dtype_b, 'float32')
-        self.assertEqual(self.kernel_gen.dtype_c, 'float32')
+        self.assertEqual(self.kernel_gen.dtype_a, 'fp32')
+        self.assertEqual(self.kernel_gen.dtype_b, 'fp32')
+        self.assertEqual(self.kernel_gen.dtype_c, 'fp32')
         self.assertEqual(len(self.kernel_gen.configs), 1)
         self.assertFalse(self.kernel_gen.icache_flush)
 
