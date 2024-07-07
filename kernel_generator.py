@@ -23,6 +23,11 @@ class KernelGenerator:
         self.bias_size = bias_size
         self.icache_flush = icache_flush
 
+    @staticmethod
+    def generated_kernel_name(M, N, K, gpu_id):
+        path = os.path.dirname(os.path.abspath(__file__))
+        return f"{path}/generated_kernel{M}-{N}-{K}-{gpu_id}.py"
+
     def write_imports(self, f_kernel):
         # write imports
         import_str = """import torch
@@ -162,18 +167,18 @@ class KernelGenerator:
        sys.exit(main())""")
             f_kernel[fi].close()
 
-    def generate_kernel(M, N, K, col_a, col_b, dtype_a, dtype_b, dtype_c, init_type, configs, jobs, iters, run_bench, rotating_buffer_size, bias_size, icache_flush):
+    def generate_kernel(self, M, N, K, col_a, col_b, dtype_a, dtype_b, dtype_c, init_type, configs, jobs, iters, run_bench, rotating_buffer_size, bias_size, icache_flush):
 
-        filenames = [generated_kernel_name(M, N, K, i) for i in range(jobs)]
+        filenames = [self.generated_kernel_name(M, N, K, i) for i in range(jobs)]
         f_kernel = [open(path, 'w') for path in filenames]
 
-        write_imports(f_kernel, jobs, icache_flush)
-        write_kernel_definitions(f_kernel, jobs, configs, M, N, K, dtype_a, dtype_b, dtype_c, bias_size)
-        write_test_gemm_preamble(f_kernel, jobs, M, N, K, dtype_a, col_a, dtype_b, col_b, dtype_c, init_type, rotating_buffer_size, bias_size)
-        write_warm_up_calls(f_kernel, jobs, configs, M, N, K, bias_size)
-        write_failed_config_handling(f_kernel, jobs, filenames)
-        write_gemm_function_calls(f_kernel, jobs, configs, M, N, K, iters, run_bench, icache_flush, bias_size)
-        write_main_function(f_kernel, jobs, M, N, K, rotating_buffer_size)
+        self.write_imports(f_kernel, jobs, icache_flush)
+        self.write_kernel_definitions(f_kernel, jobs, configs, M, N, K, dtype_a, dtype_b, dtype_c, bias_size)
+        self.write_test_gemm_preamble(f_kernel, jobs, M, N, K, dtype_a, col_a, dtype_b, col_b, dtype_c, init_type, rotating_buffer_size, bias_size)
+        self.write_warm_up_calls(f_kernel, jobs, configs, M, N, K, bias_size)
+        self.write_failed_config_handling(f_kernel, jobs, filenames)
+        self.write_gemm_function_calls(f_kernel, jobs, configs, M, N, K, iters, run_bench, icache_flush, bias_size)
+        self.write_main_function(f_kernel, jobs, M, N, K, rotating_buffer_size)
 
     def gen_kernel_and_configStr_from_config(self, M, N, K, config, dtype_a, dtype_b, dtype_c, bias_size=None):
         block_m, block_n, block_k, group_m, split_k, num_warps, num_stages, waves_per_eu, mfmaInstrSize, kpack = ConfigSpaces.read_config(config)
@@ -181,11 +186,11 @@ class KernelGenerator:
         torch_dtype_b = 'fp16'
         torch_dtype_c = 'fp16'
         if dtype_a:
-            torch_dtype_a = TypeMappings.tl_to_torch_types[name_to_tl_types[dtype_a]]
+            torch_dtype_a = TypeMappings.tl_to_torch_types[TypeMappings.name_to_tl_types[dtype_a]]
         if dtype_b:
-            torch_dtype_b = TypeMappings.tl_to_torch_types[name_to_tl_types[dtype_b]]
+            torch_dtype_b = TypeMappings.tl_to_torch_types[TypeMappings.name_to_tl_types[dtype_b]]
         if dtype_c:
-            torch_dtype_c = TypeMappings.tl_to_torch_types[name_to_tl_types[dtype_c]]
+            torch_dtype_c = TypeMappings.tl_to_torch_types[TypeMappings.name_to_tl_types[dtype_c]]
         configStr = f"M{M}_N{N}_K{K}_BM{block_m}_BN{block_n}_BK{block_k}_GM{group_m}_SK{split_k}_nW{num_warps}_nS{num_stages}_EU{waves_per_eu}_kP{kpack}_mfma{mfmaInstrSize}"
         if bias_size > 0:
             configStr += "_bias"
