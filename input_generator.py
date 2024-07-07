@@ -1,8 +1,8 @@
 import torch
 import triton
 import triton.language as tl
-from .type_mappings import TypeMappings
-from .utils import Utils
+from type_mappings import TypeMappings
+from utils import Utils
 
 class InputGenerator:
     def __init__(self, M, N, ty_name, needTrans, seed, init_type, device='cuda'):
