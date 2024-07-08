@@ -39,6 +39,7 @@ import triton.language as tl
 import argparse
 import sys
 import multiprocessing
+from input_generator import InputGenerator
     """
         if self.icache_flush:
             import_str += """
@@ -63,6 +64,47 @@ from icache_flush import icache_flush
             f_kernel[file_idx].write(matmul_kernel_config + "\n\n")
             f_kernel[file_idx].write(matmul_def_str + "\n")
             idx += 1
+
+    def write_rotating_tensor(self, f_kernel, jobs):
+        gen_rotating_tensors_str = f"""
+def gen_rotating_tensors(M, N, K, dtype_a, need_Trans_a, dtype_b, need_Trans_b, dtype_c, seed, init_type, rotating_buffer_size, bias_size, device='cuda'):
+    a_size = M * K * Utils.type_name_to_bytes(dtype_a)
+    b_size = K * N * Utils.type_name_to_bytes(dtype_b)
+    c_size = M * N * Utils.type_name_to_bytes(dtype_c)
+    bias_size_bytes = bias_size * Utils.type_name_to_bytes(dtype_c)
+
+    total_size = a_size + b_size + c_size + bias_size_bytes
+    block_count = rotating_buffer_size * 1024 * 1024 // total_size
+    block_count = max(1, block_count)
+
+    # Generate input and outputs
+    a = []
+    b = []
+    c = []
+    bias = []
+    for i in range(block_count):
+        in_a, in_a_fp16 = InputGenerator(M, K, dtype_a, need_Trans_a, seed + i, init_type, device).generate()
+        a.append(in_a)
+        in_b, in_b_fp16 = InputGenerator(K, N, dtype_b, need_Trans_b, seed + i, init_type, device).generate()
+        b.append(in_b)
+        out_c = torch.zeros((M, N), dtype=TypeMappings.tl_to_torch_types[TypeMappings.name_to_tl_types[dtype_c]], device=device)
+        c.append(out_c)
+        if bias_size > 0:
+            bs, bs_fp16 = InputGenerator(M, 1, dtype_b, need_Trans_b, seed + i, init_type, device).generate()
+            bias.append(bs.squeeze())
+
+    in_outs = {
+        "rotating_num": block_count,
+        "input_a": a,
+        "input_b": b,
+        "output_c": c,
+        "bias": bias
+    }
+
+    return in_outs
+        """
+        for fi in range(self.jobs):
+            f_kernel[fi].write(gen_rotating_tensors_str + "\n")
 
     def write_test_gemm_preamble(self, f_kernel, jobs, M, N, K, dtype_a, col_a, dtype_b, col_b, dtype_c, init_type, rotating_buffer_size, bias_size):
         # write test_gemm
@@ -166,8 +208,8 @@ def main():
             f_kernel[fi].write(def_main_str)
             f_kernel[fi].write(test_gemm_call_str + "\n\n")
             f_kernel[fi].write("""
-    if __name__ == '__main__':
-        sys.exit(main())""")
+if __name__ == '__main__':
+    sys.exit(main())""")
             f_kernel[fi].close()
 
     def generate_kernel(self, M, N, K, col_a, col_b, dtype_a, dtype_b, dtype_c, init_type, configs, jobs, iters, run_bench, rotating_buffer_size, bias_size, icache_flush):
@@ -180,6 +222,7 @@ def main():
         self.write_test_gemm_preamble(f_kernel, jobs, M, N, K, dtype_a, col_a, dtype_b, col_b, dtype_c, init_type, rotating_buffer_size, bias_size)
         self.write_warm_up_calls(f_kernel, jobs, configs, M, N, K, bias_size)
         self.write_failed_config_handling(f_kernel, jobs, filenames)
+        self.write_rotating_tensor(f_kernel, jobs)
         self.write_gemm_function_calls(f_kernel, jobs, configs, M, N, K, iters, run_bench, icache_flush, bias_size)
         self.write_main_function(f_kernel, jobs, M, N, K, rotating_buffer_size)
 
