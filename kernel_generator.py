@@ -41,6 +41,7 @@ import sys
 import multiprocessing
 from utils import Utils
 from input_generator import InputGenerator
+from type_mappings import TypeMappings
     """
         if self.icache_flush:
             import_str += """
