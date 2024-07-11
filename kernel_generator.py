@@ -39,6 +39,7 @@ import triton.language as tl
 import argparse
 import sys
 import multiprocessing
+from utils import Utils
 from input_generator import InputGenerator
     """
         if self.icache_flush:
@@ -66,7 +67,7 @@ from icache_flush import icache_flush
             idx += 1
 
     def write_rotating_tensor(self, f_kernel, jobs):
-        gen_rotating_tensors_str = f"""
+        gen_rotating_tensors_str = """
 def gen_rotating_tensors(M, N, K, dtype_a, need_Trans_a, dtype_b, need_Trans_b, dtype_c, seed, init_type, rotating_buffer_size, bias_size, device='cuda'):
     a_size = M * K * Utils.type_name_to_bytes(dtype_a)
     b_size = K * N * Utils.type_name_to_bytes(dtype_b)
