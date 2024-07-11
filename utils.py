@@ -73,7 +73,9 @@ class Utils:
     def type_name_to_bytes(ty_name):
         type_bytes = {
             'float32': 4,
+            'fp32': 4,
             'float16': 2,
+            'fp16': 2,
             'float8e4b8': 1,
             'float8e5b16': 1,
         }
